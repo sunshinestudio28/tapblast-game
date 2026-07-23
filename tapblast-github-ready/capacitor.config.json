@@ -1,0 +1,6 @@
+{
+  "appId": "com.sunshinestudio28.tapblast",
+  "appName": "Tap Blast",
+  "webDir": "www",
+  "bundledWebRuntime": false
+}

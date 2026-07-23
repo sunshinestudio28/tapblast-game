@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Tap Blast</title>
+<meta name="description" content="Tap Blast - endless arcade tapping game">
+<meta name="theme-color" content="#0f0f1a">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<script src="ads-config.js"></script>
+<script src="firebase-config.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; user-select:none; }
+  html, body { height:100%; overflow:hidden; background:#0f0f1a; font-family: 'Segoe UI', Arial, sans-serif; touch-action: none; }
+  #game {
+    position:relative;
+    width:100%;
+    height:100vh;
+    background: radial-gradient(circle at 50% 20%, #1a1a2e, #0f0f1a 70%);
+    overflow:hidden;
+  }
+  #hud {
+    position:absolute;
+    top:0; left:0; right:0;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:16px 20px;
+    color:#fff;
+    z-index:10;
+    font-weight:600;
+    font-size:18px;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+  }
+  #hud span.label { opacity:0.6; font-size:12px; display:block; font-weight:400; }
+  #hearts { font-size:16px; letter-spacing:2px; }
+  .target {
+    position:absolute;
+    width:60px; height:60px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:28px;
+    cursor:pointer;
+    box-shadow: 0 0 20px rgba(255,255,255,0.15);
+    transition: transform 0.08s ease;
+    will-change: transform;
+  }
+  .target:active { transform: scale(0.85); }
+  .good { background: radial-gradient(circle at 30% 30%, #6ee7ff, #2563eb); }
+  .bad { background: radial-gradient(circle at 30% 30%, #ff8a8a, #b91c1c); }
+  .gold { background: radial-gradient(circle at 30% 30%, #ffe66e, #f59e0b); }
+  #levelBanner {
+    position:absolute;
+    top:45%;
+    left:50%;
+    transform: translate(-50%, -50%) scale(0.8);
+    color:#fff;
+    font-size:32px;
+    font-weight:700;
+    opacity:0;
+    z-index:15;
+    pointer-events:none;
+    text-shadow: 0 0 20px rgba(110,231,255,0.8);
+  }
+  #levelBanner.show { animation: levelPop 1.1s ease forwards; }
+  @keyframes levelPop {
+    0% { opacity:0; transform: translate(-50%,-50%) scale(0.6); }
+    20% { opacity:1; transform: translate(-50%,-50%) scale(1.1); }
+    35% { transform: translate(-50%,-50%) scale(1); }
+    80% { opacity:1; }
+    100% { opacity:0; transform: translate(-50%,-50%) scale(1); }
+  }
+  #overlay {
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    background: rgba(10,10,20,0.92);
+    color:#fff;
+    text-align:center;
+    z-index:20;
+    padding:24px;
+  }
+  #overlay h1 { font-size:28px; margin-bottom:8px; }
+  #overlay p { opacity:0.75; margin-bottom:20px; font-size:14px; line-height:1.5; max-width:280px; }
+  #overlay .score-big { font-size:48px; font-weight:700; margin:8px 0; color:#6ee7ff; }
+  button {
+    background: linear-gradient(135deg, #6ee7ff, #2563eb);
+    border:none;
+    color:#fff;
+    padding:14px 32px;
+    border-radius:30px;
+    font-size:16px;
+    font-weight:600;
+    cursor:pointer;
+    box-shadow: 0 4px 16px rgba(37,99,235,0.4);
+  }
+  button:active { transform: scale(0.96); }
+  #soundBtn {
+    background:none;
+    box-shadow:none;
+    padding:8px;
+    font-size:20px;
+    position:absolute;
+    top:14px;
+    left:50%;
+    transform:translateX(-50%);
+    z-index:11;
+  }
+  #loginBtn {
+    position:absolute;
+    top:14px;
+    right:16px;
+    z-index:11;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    color:#fff;
+    padding:8px 14px;
+    border-radius:20px;
+    font-size:12px;
+    font-weight:600;
+    box-shadow:none;
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  #loginBtn img { width:18px; height:18px; border-radius:50%; }
+  #leaderboardPanel {
+    margin-top:16px;
+    width:100%;
+    max-width:300px;
+    max-height:220px;
+    overflow-y:auto;
+    background: rgba(255,255,255,0.05);
+    border-radius:12px;
+    padding:10px;
+  }
+  .lb-row {
+    display:flex;
+    justify-content:space-between;
+    padding:6px 8px;
+    font-size:13px;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+  }
+  .lb-row:last-child { border-bottom:none; }
+  .lb-rank { opacity:0.5; margin-right:8px; }
+  .flash { animation: flash 0.3s ease; }
+  @keyframes flash {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.3); opacity:0.6; }
+    100% { transform: scale(1); opacity:0; }
+  }
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="hud">
+    <div><span class="label">SCORE</span><span id="scoreVal">0</span></div>
+    <div><span class="label">LEVEL</span><span id="levelVal">1</span></div>
+    <div><span class="label">BEST</span><span id="bestVal">0</span></div>
+  </div>
+  <button id="soundBtn">🔊</button>
+  <button id="loginBtn">Sign in with Google</button>
+  <div id="hearts" style="position:absolute; top:44px; left:50%; transform:translateX(-50%); z-index:10;">❤️❤️❤️</div>
+  <div id="levelBanner"></div>
+  <div id="overlay">
+    <h1>⚡ Tap Blast</h1>
+    <p>Tap blue orbs for points, gold orbs for bonus. Avoid red — you only have 3 lives! Survive as long as you can, levels get faster forever.</p>
+    <button id="startBtn">Start Game</button>
+    <div id="leaderboardPanel" style="display:none;"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Sound engine (Web Audio API, no external files needed) ----------
+  let audioCtx = null;
+  let soundOn = true;
+
+  function ensureCtx(){
+    if (!audioCtx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  function beep(freq, duration, type, volume, glideTo){
+    if (!soundOn) return;
+    try {
+      ensureCtx();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type || 'sine';
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      if (glideTo) osc.frequency.exponentialRampToValueAtTime(glideTo, audioCtx.currentTime + duration);
+      gain.gain.setValueAtTime(volume || 0.15, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    } catch(e){}
+  }
+
+  const sfx = {
+    good: () => beep(660, 0.12, 'triangle', 0.14, 880),
+    gold: () => beep(880, 0.18, 'triangle', 0.16, 1320),
+    bad: () => beep(160, 0.25, 'sawtooth', 0.18, 60),
+    life: () => beep(120, 0.3, 'square', 0.2, 40),
+    levelUp: () => {
+      beep(523, 0.1, 'square', 0.12);
+      setTimeout(() => beep(659, 0.1, 'square', 0.12), 90);
+      setTimeout(() => beep(784, 0.16, 'square', 0.14), 180);
+    },
+    gameOver: () => {
+      beep(300, 0.2, 'sawtooth', 0.15);
+      setTimeout(() => beep(200, 0.2, 'sawtooth', 0.15), 150);
+      setTimeout(() => beep(100, 0.35, 'sawtooth', 0.15), 300);
+    }
+  };
+
+  // ---------- Encapsulated game state (basic anti-cheat: not exposed on window) ----------
+  let score = 0;
+  let level = 1;
+  let lives = 3;
+  let running = false;
+  let spawnTimer = null;
+  let gameStartTs = 0;
+  let lastLevelUpScore = 0;
+  const POINTS_PER_LEVEL = 15;
+
+  const game = document.getElementById('game');
+  const overlay = document.getElementById('overlay');
+  const scoreVal = document.getElementById('scoreVal');
+  const levelVal = document.getElementById('levelVal');
+  const bestVal = document.getElementById('bestVal');
+  const startBtn = document.getElementById('startBtn');
+  const heartsEl = document.getElementById('hearts');
+  const levelBanner = document.getElementById('levelBanner');
+  const soundBtn = document.getElementById('soundBtn');
+
+  soundBtn.addEventListener('click', () => {
+    soundOn = !soundOn;
+    soundBtn.textContent = soundOn ? '🔊' : '🔇';
+    if (soundOn) beep(440, 0.08, 'sine', 0.1);
+  });
+
+  // ---------- Google login + leaderboard ----------
+  const loginBtn = document.getElementById('loginBtn');
+  const leaderboardPanel = document.getElementById('leaderboardPanel');
+
+  function renderLoginBtn(){
+    const gl = window.GoogleLeaderboard;
+    if (gl && gl.isSignedIn()){
+      const user = gl.getUser();
+      loginBtn.innerHTML = (user.photoUrl ? `<img src="${user.photoUrl}">` : '') + (user.displayName || 'Signed in');
+    } else {
+      loginBtn.textContent = 'Sign in with Google';
+    }
+  }
+
+  async function renderLeaderboard(){
+    const gl = window.GoogleLeaderboard;
+    if (!gl) return;
+    const rows = await gl.fetchLeaderboard();
+    if (!rows.length){
+      leaderboardPanel.style.display = 'none';
+      return;
+    }
+    leaderboardPanel.style.display = 'block';
+    leaderboardPanel.innerHTML = '<div style="font-size:12px; opacity:0.6; margin-bottom:6px;">🏆 LEADERBOARD</div>' +
+      rows.map((r, i) => `<div class="lb-row"><span><span class="lb-rank">#${i+1}</span>${r.name}</span><span>${r.bestScore}</span></div>`).join('');
+  }
+
+  loginBtn.addEventListener('click', () => {
+    const gl = window.GoogleLeaderboard;
+    if (!gl) return;
+    if (gl.isSignedIn()) {
+      gl.signOut();
+    } else {
+      gl.signIn();
+    }
+  });
+
+  document.addEventListener('leaderboard-login', () => { renderLoginBtn(); renderLeaderboard(); });
+  document.addEventListener('leaderboard-logout', () => { renderLoginBtn(); leaderboardPanel.style.display = 'none'; });
+
+  function loadBest(){
+    try {
+      const v = parseInt(window.name.replace('tapblast_best:','')) || 0;
+      return isNaN(v) ? 0 : v;
+    } catch(e){ return 0; }
+  }
+  function saveBest(v){
+    try { window.name = 'tapblast_best:' + v; } catch(e){}
+  }
+  let best = loadBest();
+  bestVal.textContent = best;
+
+  function rand(min, max){ return Math.random() * (max - min) + min; }
+
+  function updateHearts(){
+    heartsEl.textContent = '❤️'.repeat(Math.max(lives,0)) + '🖤'.repeat(Math.max(3-lives,0));
+  }
+
+  function currentDifficulty(){
+    // Infinite scaling: spawn rate speeds up, target lifespan shrinks as level rises, capped for playability
+    const spawnInterval = Math.max(650 - (level-1)*35, 220);
+    const lifespanMin = Math.max(650 - (level-1)*25, 280);
+    const lifespanMax = Math.max(1100 - (level-1)*35, 420);
+    const badChance = Math.min(0.22 + (level-1)*0.015, 0.42);
+    const goldChance = 0.08;
+    return { spawnInterval, lifespanMin, lifespanMax, badChance, goldChance };
+  }
+
+  function maybeLevelUp(){
+    if (score - lastLevelUpScore >= POINTS_PER_LEVEL){
+      lastLevelUpScore = score;
+      level += 1;
+      levelVal.textContent = level;
+      sfx.levelUp();
+      levelBanner.textContent = 'LEVEL ' + level;
+      levelBanner.classList.remove('show');
+      void levelBanner.offsetWidth; // restart animation
+      levelBanner.classList.add('show');
+      restartSpawnLoop();
+    }
+  }
+
+  function restartSpawnLoop(){
+    if (spawnTimer) clearInterval(spawnTimer);
+    const diff = currentDifficulty();
+    spawnTimer = setInterval(spawnTarget, diff.spawnInterval);
+  }
+
+  function spawnTarget(){
+    if (!running) return;
+    const diff = currentDifficulty();
+    const el = document.createElement('div');
+
+    const roll = Math.random();
+    let kind = 'good';
+    if (roll < diff.badChance) kind = 'bad';
+    else if (roll < diff.badChance + diff.goldChance) kind = 'gold';
+
+    el.className = 'target ' + (kind === 'bad' ? 'bad' : kind === 'gold' ? 'gold' : 'good');
+    el.textContent = kind === 'bad' ? '✕' : kind === 'gold' ? '✦' : '★';
+
+    const gw = game.clientWidth, gh = game.clientHeight;
+    const x = rand(20, gw - 80);
+    const y = rand(90, gh - 90);
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+
+    let tapped = false;
+    const remove = () => { if (el.parentNode) el.parentNode.removeChild(el); };
+
+    const handleTap = (e) => {
+      e.preventDefault();
+      if (tapped || !running) return;
+      tapped = true;
+
+      // Integrity check: reject impossible score jumps relative to elapsed time (basic client-side anti-cheat)
+      const elapsed = (Date.now() - gameStartTs) / 1000;
+      const maxAllowed = Math.ceil(elapsed * 4) + 10;
+
+      if (kind === 'bad'){
+        lives -= 1;
+        updateHearts();
+        sfx.bad();
+        if (lives <= 0){
+          el.remove();
+          endGame();
+          return;
+        } else {
+          sfx.life();
+        }
+      } else {
+        const gain = kind === 'gold' ? 3 : 1;
+        if (score + gain <= maxAllowed){
+          score += gain;
+        }
+        scoreVal.textContent = score;
+        kind === 'gold' ? sfx.gold() : sfx.good();
+        maybeLevelUp();
+      }
+      el.classList.add('flash');
+      setTimeout(remove, 250);
+    };
+
+    el.addEventListener('pointerdown', handleTap, { passive:false });
+    game.appendChild(el);
+
+    const lifespan = rand(diff.lifespanMin, diff.lifespanMax);
+    setTimeout(() => { if (!tapped) remove(); }, lifespan);
+  }
+
+  function startGame(){
+    ensureCtx();
+    score = 0;
+    level = 1;
+    lives = 3;
+    lastLevelUpScore = 0;
+    running = true;
+    gameStartTs = Date.now();
+    scoreVal.textContent = '0';
+    levelVal.textContent = '1';
+    updateHearts();
+    overlay.style.display = 'none';
+    restartSpawnLoop();
+  }
+
+  function endGame(){
+    running = false;
+    clearInterval(spawnTimer);
+    document.querySelectorAll('.target').forEach(t => t.remove());
+    sfx.gameOver();
+    if (window.onGameOverShowAd) window.onGameOverShowAd();
+
+    if (window.GoogleLeaderboard && window.GoogleLeaderboard.isSignedIn()){
+      window.GoogleLeaderboard.saveScore(score, level).then(renderLeaderboard);
+    }
+
+    if (score > best){
+      best = score;
+      saveBest(best);
+      bestVal.textContent = best;
+    }
+
+    overlay.innerHTML = `
+      <h1>💥 Game Over</h1>
+      <div class="score-big">${score}</div>
+      <p>Reached Level ${level} · ${score >= best ? "New best score! 🎉" : "Best: " + best}</p>
+      <button id="startBtn">Play Again</button>
+    `;
+    overlay.style.display = 'flex';
+    document.getElementById('startBtn').addEventListener('click', startGame);
+  }
+
+  startBtn.addEventListener('click', startGame);
+})();
+
+// AdMob is loaded separately in ads.js — no changes needed here.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+  });
+}
+</script>
+<script src="ads.js"></script>
+<script src="leaderboard.js"></script>
+</body>
+</html>

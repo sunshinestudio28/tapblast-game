@@ -1,0 +1,19 @@
+{
+  "name": "tapblast",
+  "version": "1.0.0",
+  "description": "Tap Blast - endless arcade tapping game",
+  "scripts": {
+    "sync": "npx cap sync",
+    "open:android": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.1.0",
+    "@capacitor/android": "^6.1.0",
+    "@capacitor-community/admob": "^6.1.0",
+    "@capacitor-firebase/authentication": "^6.1.0",
+    "@capacitor-firebase/firestore": "^6.1.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.0"
+  }
+}
